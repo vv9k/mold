@@ -1,0 +1,20 @@
+[package]
+name = "mold"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+readme = "README.md"
+authors = ["Wojciech Kępka <wojciech@wkepka.dev>"]
+repository = "https://github.com/vv9k/mold"
+
+[lib]
+name = "mold"
+path = "./src/lib.rs"
+
+[dependencies]
+clap = "3.0.0-beta.5"
+anyhow = "1"
+dirs = "4"
+serde = { version = "1", features = ["derive"] }
+serde_yaml = "0.8"
+nom = "7"
