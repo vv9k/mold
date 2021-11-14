@@ -15,7 +15,7 @@ pub struct Namespace {
     variables: HashMap<VariableKey, VariableValue>,
 }
 
-const GLOBAL_NS: &str = "GLOBAL";
+pub const GLOBAL_NS: &str = "GLOBAL";
 
 impl Namespace {
     pub fn global() -> Self {
@@ -49,7 +49,7 @@ impl SerializedContext {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct Context {
     global: Namespace,
     namespaces: HashMap<String, Namespace>,
@@ -78,23 +78,21 @@ impl Context {
 }
 
 #[derive(Debug, Default)]
-pub struct Mold;
+pub struct Mold {
+    context: Context,
+}
 
 impl Mold {
-    pub fn read_context(&self, file: &std::path::Path) -> Result<Context> {
-        let data = std::fs::read(file).context("context file read error")?;
+    pub fn new(context_file: &std::path::Path) -> Result<Self> {
+        let data = std::fs::read(context_file).context("context file read error")?;
         serde_yaml::from_slice::<SerializedContext>(&data)
-            .map(|ctx| ctx.to_context())
+            .map(|ctx| Mold {
+                context: ctx.to_context(),
+            })
             .context("context deserialization error")
     }
 
-    pub fn render(
-        &self,
-        input: &str,
-        context: &Context,
-        namespace: Option<&str>,
-        render_raw: bool,
-    ) -> Result<String> {
+    pub fn render(&self, input: &str, namespace: Option<&str>, render_raw: bool) -> Result<String> {
         let mut out = String::new();
         let tokens = parser::parse_input(&input).context("parsing input error")?;
         for token in tokens {
@@ -102,10 +100,9 @@ impl Mold {
                 Token::Text(t) => out.push_str(t),
                 Token::Variable { name, raw } => {
                     let rendered = if let Some(ns) = namespace {
-                        if let Some(value) = context.get_variable_value(name, ns) {
+                        if let Some(value) = self.context.get_variable_value(name, ns) {
                             // try to render variable in case it contains nested variables
-                            if let Ok(rendered) =
-                                self.render(value.as_str(), context, namespace, render_raw)
+                            if let Ok(rendered) = self.render(value.as_str(), namespace, render_raw)
                             {
                                 out.push_str(&rendered);
                             } else {
@@ -117,9 +114,8 @@ impl Mold {
                         }
                     } else {
                         // try to use variables from global namespace
-                        if let Some(value) = context.get_global_variable(name) {
-                            if let Ok(rendered) =
-                                self.render(value.as_str(), context, namespace, render_raw)
+                        if let Some(value) = self.context.get_global_variable(name) {
+                            if let Ok(rendered) = self.render(value.as_str(), namespace, render_raw)
                             {
                                 out.push_str(&rendered);
                             } else {
@@ -143,11 +139,10 @@ impl Mold {
     pub fn render_file(
         &self,
         file: &std::path::Path,
-        context: &Context,
         namespace: Option<&str>,
         render_raw: bool,
     ) -> Result<String> {
         let input = std::fs::read_to_string(file).context("render file read error")?;
-        self.render(&input, context, namespace, render_raw)
+        self.render(&input, namespace, render_raw)
     }
 }
