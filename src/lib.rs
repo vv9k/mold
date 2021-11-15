@@ -5,6 +5,7 @@ use parser::Token;
 use anyhow::{Context as ErrorContext, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::path::PathBuf;
 
 pub type VariableKey = String;
 pub type VariableValue = String;
@@ -30,6 +31,8 @@ impl Namespace {
 struct SerializedContext {
     #[serde(default = "Namespace::global")]
     global: Namespace,
+    #[serde(default)]
+    renders: HashMap<PathBuf, PathBuf>,
     namespaces: Vec<Namespace>,
 }
 
@@ -45,13 +48,18 @@ impl SerializedContext {
         } else {
             self.global
         };
-        Context { global, namespaces }
+        Context {
+            global,
+            renders: self.renders,
+            namespaces,
+        }
     }
 }
 
 #[derive(Debug, Clone, Default)]
 pub struct Context {
     global: Namespace,
+    renders: HashMap<PathBuf, PathBuf>,
     namespaces: HashMap<String, Namespace>,
 }
 
@@ -75,6 +83,10 @@ impl Context {
             .and_then(|ns| ns.variables.get(key))
             .or_else(|| self.get_global_variable(key))
     }
+
+    pub fn renders(&self) -> &HashMap<PathBuf, PathBuf> {
+        &self.renders
+    }
 }
 
 #[derive(Debug, Default)]
@@ -90,6 +102,10 @@ impl Mold {
                 context: ctx.to_context(),
             })
             .context("context deserialization error")
+    }
+
+    pub fn context(&self) -> &Context {
+        &self.context
     }
 
     pub fn render(&self, input: &str, namespace: Option<&str>, render_raw: bool) -> Result<String> {
