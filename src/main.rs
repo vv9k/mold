@@ -14,6 +14,16 @@ macro_rules! exit {
 
 #[derive(Debug, Parser)]
 #[clap(version = "0.1.0", author = "Wojciech Kępka <wojciech@wkepka.dev>")]
+/// A simple configuration template rendering program.
+///
+/// The main goal of mold is to allow users to easily switch configuration files between different
+/// contexts. One example usage would be to have custom themes for multiple programs with one easy
+/// way to switch all of their configuration at once.
+///
+/// The context file contains multiple namespaces as well as a global namespace. Each namespace can
+/// have multiple key-value entries. Those variables can then be used in the templates like this:
+/// {% variable1 %}. The name of the variable is enclosed in `{%` and `%}` with any amount of
+/// whitespace in between allowed.
 struct Opts {
     #[clap(subcommand)]
     command: Subcommand,
@@ -21,31 +31,62 @@ struct Opts {
 
 #[derive(Debug, Parser)]
 enum Subcommand {
-    /// Renders a single file with a given context.
+    /// Renders specified files with a given context.
     Render {
-        input_file: PathBuf,
-        output_path: Option<PathBuf>,
+        /// Input files to render.
+        templates: Vec<PathBuf>,
         #[clap(short, long)]
-        namespace: Option<String>,
-        #[clap(short, long)]
-        context_file: Option<PathBuf>,
-        #[clap(long)]
-        /// By default, if there is no value for a variable name in the context nothing will
-        /// be rendered in place. This option enables rendering of missing variables.
-        show_missing: bool,
-        #[clap(long)]
-        no_diff: bool,
-    },
-    RenderContext {
+        /// Location of the context file to use for rendering.
         context_file: PathBuf,
         #[clap(short, long)]
+        /// If specified the rendered content will be placed to this location, otherwise it will be
+        /// printed to standard output.
+        output_path: Option<PathBuf>,
+        #[clap(short, long)]
+        /// Specifies the namespace in the context to use for rendering. If not specified
+        /// only GLOBAL namespace will be used.
+        namespace: Option<String>,
+        #[clap(long)]
+        /// By default, if there is no value for a variable name in the context nothing will
+        /// be rendered in place. This option enables rendering of missing variables.
+        show_missing: bool,
+        /// If true a diff of current file content and new rendered content will be displayed
+        #[clap(long)]
+        show_diff: bool,
+    },
+    /// Render specified context. If the context has no `renders` field this command has no effect.
+    RenderContext {
+        /// Location of the context file to use for rendering.
+        context_file: PathBuf,
+        #[clap(short, long)]
+        /// Specifies the namespace in the context to use for rendering. If not specified
+        /// only GLOBAL namespace will be used.
         namespace: Option<String>,
         #[clap(long)]
         /// By default, if there is no value for a variable name in the context nothing will
         /// be rendered in place. This option enables rendering of missing variables.
         show_missing: bool,
         #[clap(long)]
-        no_diff: bool,
+        /// If true a diff of current file content and new rendered content will be displayed
+        show_diff: bool,
+    },
+    /// Prints a diff of current file content and newly rendered content.
+    Diff {
+        /// Template to render and diff.
+        template: PathBuf,
+        /// Location of the file to compare to.
+        output_path: PathBuf,
+        #[clap(short, long)]
+        /// Location of the context file to use for diffing.
+        context_file: PathBuf,
+        #[clap(long)]
+        /// By default, if there is no value for a variable name in the context nothing will
+        /// be rendered in place. This option enables rendering of missing variables.
+        show_missing: bool,
+        #[clap(short, long)]
+        /// Specifies the namespace in the context to use for rendering. If not specified
+        /// only GLOBAL namespace will be used.
+        namespace: Option<String>,
     },
 }
 
@@ -60,7 +101,7 @@ impl std::fmt::Display for Line {
     }
 }
 
-fn print_diff<W: io::Write>(writer: &mut W, a: &str, b: &str) -> io::Result<()> {
+fn diff<W: io::Write>(writer: &mut W, a: &str, b: &str) -> io::Result<()> {
     let diff = similar::TextDiff::from_lines(a, b);
     for (idx, group) in diff.grouped_ops(3).iter().enumerate() {
         if idx > 0 {
@@ -105,49 +146,86 @@ fn expand(path: &Path) -> PathBuf {
     PathBuf::from(shellexpand::tilde(&path.to_string_lossy()).to_string())
 }
 
-fn render_file(
+fn display_diff(template: &Path, output: &Path, namespace: Option<&str>, rendered: &str) {
+    if let Ok(loaded) = std::fs::read_to_string(&output) {
+        println!("{:=^1$}", "=", 80);
+        println!("|{: ^1$}DIFF", " ", 37);
+        println!("| Template:  {}", template.to_string_lossy().bold());
+        println!("| Output:    {}", output.to_string_lossy().bold());
+        println!(
+            "| Namespace: {}",
+            namespace.as_deref().unwrap_or(mold::GLOBAL_NS).bold()
+        );
+        let _ = diff(&mut io::stdout(), &loaded, rendered);
+    }
+}
+
+fn diff_template(
+    mold: &Mold,
+    template: &Path,
+    output_path: &Path,
+    namespace: Option<&str>,
+    show_missing: bool,
+) {
+    let template = expand(template);
+    match mold.render_file(&template, namespace.as_deref(), show_missing) {
+        Ok(rendered) => {
+            let output_path = expand(output_path);
+            display_diff(&template, &output_path, namespace, &rendered);
+        }
+        Err(e) => eprintln!("failed to render file `{}` - {}", template.display(), e),
+    }
+}
+
+fn render_template(
     mold: &Mold,
     namespace: Option<&str>,
-    input_file: &Path,
+    template: &Path,
     output_path: Option<&Path>,
     show_diff: bool,
     show_missing: bool,
 ) {
-    let input_file = expand(&input_file);
-    match mold.render_file(&input_file, namespace.as_deref(), show_missing) {
+    let template = expand(template);
+    match mold.render_file(&template, namespace.as_deref(), show_missing) {
         Ok(rendered) => {
-            let len = input_file.to_string_lossy().len() + 6;
-            let line = std::iter::repeat("-").take(len).collect::<String>();
+            let len = template.to_string_lossy().len() + 6;
+            let line = "-".repeat(len);
             if let Some(output_path) = output_path.as_deref() {
                 let output_path = expand(output_path);
                 if show_diff {
-                    if let Ok(loaded) = std::fs::read_to_string(&output_path) {
-                        println!("{:=^1$}", "=", 80);
-                        println!("|{: ^1$}DIFF", " ", 37);
-                        println!("| Template:  {}", input_file.to_string_lossy().bold());
-                        println!("| Output:    {}", output_path.to_string_lossy().bold());
-                        println!(
-                            "| Namespace: {}",
-                            namespace.as_deref().unwrap_or(mold::GLOBAL_NS).bold()
-                        );
-                        let _ = print_diff(&mut io::stdout(), &loaded, &rendered);
-                    }
+                    display_diff(&template, &output_path, namespace, &rendered);
                 }
-                if let Err(e) = std::fs::write(&output_path, rendered.as_bytes()) {
+                if let Err(e) = std::fs::write(
+                    &output_path.join(
+                        template
+                            .file_name()
+                            .map(|f| f.to_string_lossy().to_string())
+                            .unwrap_or_else(|| {
+                                format!(
+                                    "mold-file-{}",
+                                    std::time::SystemTime::now()
+                                        .duration_since(std::time::UNIX_EPOCH)
+                                        .map(|d| d.as_secs())
+                                        .unwrap_or_default()
+                                )
+                            }),
+                    ),
+                    rendered.as_bytes(),
+                ) {
                     eprintln!(
                         "failed to save rendered file `{}` to `{}` - {}",
-                        input_file.display(),
+                        template.display(),
                         output_path.display(),
                         e
                     );
                 }
             } else {
                 println!("{:=^1$}", "=", 80);
-                println!("File: {}\n{}", input_file.display(), line);
+                println!("File: {}\n{}", template.display(), line);
                 println!("{}", rendered);
             }
         }
-        Err(e) => eprintln!("failed to render file `{}` - {}", input_file.display(), e),
+        Err(e) => eprintln!("failed to render file `{}` - {}", template.display(), e),
     }
 }
 
@@ -156,59 +234,70 @@ fn main() {
 
     match opts.command {
         Subcommand::Render {
-            input_file,
-            output_path,
             context_file,
+            templates,
+            output_path,
             namespace,
             show_missing,
-            no_diff,
+            show_diff,
         } => {
-            let show_diff = !no_diff;
-            let context_file = if let Some(context_file) = context_file {
-                context_file
-            } else if let Some(context_file) = dirs::config_dir().map(|dir| dir.join("mold.yaml")) {
-                context_file
-            } else {
-                exit!("no context file found, exiting...");
-            };
-
             let mold = match Mold::new(&context_file) {
                 Ok(mold) => mold,
                 Err(e) => exit!("failed to initialize mold - {}", e),
             };
 
-            render_file(
-                &mold,
-                namespace.as_deref(),
-                &input_file,
-                output_path.as_deref(),
-                show_diff,
-                show_missing,
-            );
+            templates.into_iter().for_each(|template| {
+                render_template(
+                    &mold,
+                    namespace.as_deref(),
+                    &template,
+                    output_path.as_deref(),
+                    show_diff,
+                    show_missing,
+                );
+            });
         }
         Subcommand::RenderContext {
             context_file,
             namespace,
             show_missing,
-            no_diff,
+            show_diff,
         } => {
-            let show_diff = !no_diff;
-
             let mold = match Mold::new(&context_file) {
                 Ok(mold) => mold,
                 Err(e) => exit!("failed to initialize mold - {}", e),
             };
 
-            for (input_file, output_path) in mold.context().renders() {
-                render_file(
+            for (template, output_path) in mold.context().renders() {
+                render_template(
                     &mold,
                     namespace.as_deref(),
-                    &input_file,
+                    template,
                     Some(output_path),
                     show_diff,
                     show_missing,
                 );
             }
+        }
+        Subcommand::Diff {
+            context_file,
+            template,
+            output_path,
+            namespace,
+            show_missing,
+        } => {
+            let mold = match Mold::new(&context_file) {
+                Ok(mold) => mold,
+                Err(e) => exit!("failed to initialize mold - {}", e),
+            };
+
+            diff_template(
+                &mold,
+                &template,
+                &output_path,
+                namespace.as_deref(),
+                show_missing,
+            );
         }
     }
 }

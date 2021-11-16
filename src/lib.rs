@@ -36,9 +36,9 @@ struct SerializedContext {
     namespaces: Vec<Namespace>,
 }
 
-impl SerializedContext {
-    pub fn to_context(self) -> Context {
-        let mut namespaces: HashMap<String, Namespace> = self
+impl From<SerializedContext> for Context {
+    fn from(ctx: SerializedContext) -> Self {
+        let mut namespaces: HashMap<String, Namespace> = ctx
             .namespaces
             .into_iter()
             .map(|ns| (ns.name.clone(), ns))
@@ -46,11 +46,11 @@ impl SerializedContext {
         let global = if let Some(global) = namespaces.remove(GLOBAL_NS) {
             global
         } else {
-            self.global
+            ctx.global
         };
         Context {
             global,
-            renders: self.renders,
+            renders: ctx.renders,
             namespaces,
         }
     }
@@ -99,7 +99,7 @@ impl Mold {
         let data = std::fs::read(context_file).context("context file read error")?;
         serde_yaml::from_slice::<SerializedContext>(&data)
             .map(|ctx| Mold {
-                context: ctx.to_context(),
+                context: ctx.into(),
             })
             .context("context deserialization error")
     }
@@ -110,7 +110,7 @@ impl Mold {
 
     pub fn render(&self, input: &str, namespace: Option<&str>, render_raw: bool) -> Result<String> {
         let mut out = String::new();
-        let tokens = parser::parse_input(&input).context("parsing input error")?;
+        let tokens = parser::parse_input(input).context("parsing input error")?;
         for token in tokens {
             match token {
                 Token::Text(t) => out.push_str(t),
@@ -122,7 +122,7 @@ impl Mold {
                             {
                                 out.push_str(&rendered);
                             } else {
-                                out.push_str(&value);
+                                out.push_str(value);
                             }
                             true
                         } else {
@@ -135,7 +135,7 @@ impl Mold {
                             {
                                 out.push_str(&rendered);
                             } else {
-                                out.push_str(&value);
+                                out.push_str(value);
                             }
                             true
                         } else {
@@ -143,7 +143,7 @@ impl Mold {
                         }
                     };
                     if !rendered && render_raw {
-                        out.push_str(&raw);
+                        out.push_str(raw);
                     }
                 }
             }
