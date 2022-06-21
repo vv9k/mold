@@ -37,7 +37,7 @@ impl<I> nom::error::ParseError<I> for ParseError<I> {
 pub enum Token<'a> {
     Text(&'a str),
     Variable { name: &'a str, raw: &'a str },
-    FileSource { path: &'a str, trim: bool }
+    FileSource { path: &'a str, trim: bool },
 }
 
 fn is_valid_variable_char(c: char) -> bool {
@@ -56,14 +56,16 @@ fn variable_name(i: &str) -> IResult<&str, &str, ParseError<&str>> {
     take_while(is_valid_variable_char)(i)
 }
 
-fn file_path_impl<'a>(i: &'a str, end_tag: &'static str) -> IResult<&'a str, &'a str, ParseError<&'a str>> {
-    if let Some(pos) = i.find(end_tag){
+fn file_path_impl<'a>(
+    i: &'a str,
+    end_tag: &'static str,
+) -> IResult<&'a str, &'a str, ParseError<&'a str>> {
+    if let Some(pos) = i.find(end_tag) {
         let trimmed = i.split(end_tag).next().unwrap().trim();
-        
-        Ok((&i[pos..],trimmed))
+
+        Ok((&i[pos..], trimmed))
     } else {
-        Err(nom::Err::Failure(
-        ParseError::Nom(i, ErrorKind::Verify)))
+        Err(nom::Err::Failure(ParseError::Nom(i, ErrorKind::Verify)))
     }
 }
 
@@ -79,46 +81,54 @@ fn space_count(i: &str) -> IResult<&str, usize, ParseError<&str>> {
     many0_count(char(' '))(i)
 }
 
-fn parse_variable(i: &str) -> IResult<&str, Token, ParseError<&str>> {
+fn parse_enclosed_tag<'a>(
+    i: &'a str,
+    start_tag: &'static str,
+    end_tag: &'static str,
+    take_while: impl FnMut(&'a str) -> IResult<&'a str, &'a str, ParseError<&'a str>>,
+    f: impl FnMut((usize, &'a str, usize)) -> Token<'a>,
+) -> IResult<&'a str, Token<'a>, ParseError<&'a str>> {
     map(
         tuple((
-            preceded(tag(VAR_START_TAG), space_count),
-            variable_name,
-            terminated(space_count, tag(VAR_END_TAG)),
+            preceded(tag(start_tag), space_count),
+            take_while,
+            terminated(space_count, tag(end_tag)),
         )),
+        f,
+    )(i)
+}
+
+fn parse_variable(i: &str) -> IResult<&str, Token, ParseError<&str>> {
+    parse_enclosed_tag(
+        i,
+        VAR_START_TAG,
+        VAR_END_TAG,
+        variable_name,
         |(count1, name, count2)| Token::Variable {
             name,
             raw: &i[..name.len() + 4 + count1 + count2],
         },
-    )(i)
+    )
 }
 
 fn parse_file_source(i: &str) -> IResult<&str, Token, ParseError<&str>> {
-    map(
-        tuple((
-            preceded(tag(FILE_START_TAG), space_count),
-            file_path,
-            terminated(space_count, tag(FILE_END_TAG)),
-        )),
-        |(_, path, _)| Token::FileSource {
-            path, trim: false
-        },
-    )(i)
+    parse_enclosed_tag(
+        i,
+        FILE_START_TAG,
+        FILE_END_TAG,
+        file_path,
+        |(_, path, _)| Token::FileSource { path, trim: false },
+    )
 }
 
 fn parse_file_source_trim(i: &str) -> IResult<&str, Token, ParseError<&str>> {
-    map(
-        tuple((
-            preceded(tag(FILE_TRIM_START_TAG), space_count),
-            file_path_trim,
-            terminated(space_count, tag(FILE_TRIM_END_TAG)),
-        )),
-        |(_, path, _)| { let token = Token::FileSource {
-            path, trim: true
-        }; 
-        token
-        },
-    )(i)
+    parse_enclosed_tag(
+        i,
+        FILE_TRIM_START_TAG,
+        FILE_TRIM_END_TAG,
+        file_path_trim,
+        |(_, path, _)| Token::FileSource { path, trim: true },
+    )
 }
 
 #[inline]
@@ -140,11 +150,12 @@ fn parse_brace(i: &str) -> IResult<&str, Token, ParseError<&str>> {
 
 fn parse_token(i: &str) -> IResult<&str, Token, ParseError<&str>> {
     alt((
-            parse_variable,
-            parse_file_source_trim,
-            parse_file_source,
-            parse_brace,
-            parse_text))(i)
+        parse_variable,
+        parse_file_source_trim,
+        parse_file_source,
+        parse_brace,
+        parse_text,
+    ))(i)
 }
 
 pub fn parse_input(i: &str) -> anyhow::Result<Vec<Token>> {
