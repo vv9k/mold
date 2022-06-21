@@ -59,6 +59,9 @@ enum Subcommand {
         /// If true no separator will be printed
         #[clap(long)]
         no_separator: bool,
+        #[clap(short, long)]
+        /// If true no changes will be made
+        dry_run: bool,
     },
     /// Render specified context. If the context has no `renders` field this command has no effect.
     RenderContext {
@@ -75,6 +78,9 @@ enum Subcommand {
         #[clap(long)]
         /// If true a diff of current file content and new rendered content will be displayed
         show_diff: bool,
+        #[clap(short, long)]
+        /// If true no changes will be made
+        dry_run: bool,
     },
     /// Prints a diff of current file content and newly rendered content.
     Diff {
@@ -196,6 +202,7 @@ fn render_template(
     template: &Path,
     output_path: Option<&Path>,
     display_options: &DisplayOptions,
+    dry_run: bool,
 ) {
     let template = expand(template);
     match mold.render_file(&template, namespace, display_options.show_missing) {
@@ -208,13 +215,15 @@ fn render_template(
                     display_diff(&template, &output_path, namespace, &rendered);
                 }
                 println!("saving {} to {}", template.display(), output_path.display());
-                if let Err(e) = std::fs::write(&output_path, rendered.as_bytes()) {
-                    eprintln!(
-                        "failed to save rendered file `{}` to `{}` - {:?}",
-                        template.display(),
-                        output_path.display(),
-                        e
-                    );
+                if !dry_run {
+                    if let Err(e) = std::fs::write(&output_path, rendered.as_bytes()) {
+                        eprintln!(
+                            "failed to save rendered file `{}` to `{}` - {:?}",
+                            template.display(),
+                            output_path.display(),
+                            e
+                        );
+                    }
                 }
             } else {
                 if display_options.show_separator {
@@ -243,6 +252,7 @@ fn main() {
             show_diff,
             show_headers,
             no_separator,
+            dry_run,
         } => {
             let mold = match Mold::new(&context_file) {
                 Ok(mold) => mold,
@@ -252,7 +262,7 @@ fn main() {
                 show_missing,
                 show_diff,
                 show_headers,
-                show_separator: !no_separator
+                show_separator: !no_separator,
             };
 
             templates.into_iter().for_each(|template| {
@@ -261,7 +271,8 @@ fn main() {
                     namespace.as_deref(),
                     &template,
                     output_path.as_deref(),
-                    &display_opts
+                    &display_opts,
+                    dry_run,
                 );
             });
         }
@@ -270,6 +281,7 @@ fn main() {
             namespace,
             show_missing,
             show_diff,
+            dry_run,
         } => {
             let mold = match Mold::new(&context_file) {
                 Ok(mold) => mold,
@@ -279,7 +291,7 @@ fn main() {
                 show_missing,
                 show_diff,
                 show_headers: false,
-                show_separator: false
+                show_separator: false,
             };
 
             for (template, output_path) in mold.context().renders() {
@@ -288,7 +300,8 @@ fn main() {
                     namespace.as_deref(),
                     template,
                     Some(output_path),
-                    &display_opts
+                    &display_opts,
+                    dry_run,
                 );
             }
         }
