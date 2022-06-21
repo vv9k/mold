@@ -160,7 +160,7 @@ fn display_diff(template: &Path, output: &Path, namespace: Option<&str>, rendere
         println!("| Output:    {}", output.to_string_lossy().bold());
         println!(
             "| Namespace: {}",
-            namespace.as_deref().unwrap_or(mold::GLOBAL_NS).bold()
+            namespace.unwrap_or(mold::GLOBAL_NS).bold()
         );
         let _ = diff(&mut io::stdout(), &loaded, rendered);
     }
@@ -174,7 +174,7 @@ fn diff_template(
     show_missing: bool,
 ) {
     let template = expand(template);
-    match mold.render_file(&template, namespace.as_deref(), show_missing) {
+    match mold.render_file(&template, namespace, show_missing) {
         Ok(rendered) => {
             let output_path = expand(output_path);
             display_diff(&template, &output_path, namespace, &rendered);
@@ -183,24 +183,28 @@ fn diff_template(
     }
 }
 
+struct DisplayOptions {
+    show_diff: bool,
+    show_missing: bool,
+    show_headers: bool,
+    show_separator: bool,
+}
+
 fn render_template(
     mold: &Mold,
     namespace: Option<&str>,
     template: &Path,
     output_path: Option<&Path>,
-    show_diff: bool,
-    show_missing: bool,
-    show_headers: bool,
-    show_separator: bool,
+    display_options: &DisplayOptions,
 ) {
     let template = expand(template);
-    match mold.render_file(&template, namespace.as_deref(), show_missing) {
+    match mold.render_file(&template, namespace, display_options.show_missing) {
         Ok(rendered) => {
             let len = template.to_string_lossy().len() + 6;
             let line = "-".repeat(len);
-            if let Some(output_path) = output_path.as_deref() {
+            if let Some(output_path) = output_path {
                 let output_path = expand(output_path);
-                if show_diff {
+                if display_options.show_diff {
                     display_diff(&template, &output_path, namespace, &rendered);
                 }
                 println!("saving {} to {}", template.display(), output_path.display());
@@ -213,10 +217,10 @@ fn render_template(
                     );
                 }
             } else {
-                if show_separator {
+                if display_options.show_separator {
                     println!("{:=^1$}", "=", 80);
                 }
-                if show_headers {
+                if display_options.show_headers {
                     println!("File: {}\n{}", template.display(), line);
                 }
                 println!("{}", rendered);
@@ -244,6 +248,12 @@ fn main() {
                 Ok(mold) => mold,
                 Err(e) => exit!("failed to initialize mold - {:?}", e),
             };
+            let display_opts = DisplayOptions {
+                show_missing,
+                show_diff,
+                show_headers,
+                show_separator: !no_separator
+            };
 
             templates.into_iter().for_each(|template| {
                 render_template(
@@ -251,10 +261,7 @@ fn main() {
                     namespace.as_deref(),
                     &template,
                     output_path.as_deref(),
-                    show_diff,
-                    show_missing,
-                    show_headers,
-                    !no_separator,
+                    &display_opts
                 );
             });
         }
@@ -268,6 +275,12 @@ fn main() {
                 Ok(mold) => mold,
                 Err(e) => exit!("failed to initialize mold - {:?}", e),
             };
+            let display_opts = DisplayOptions {
+                show_missing,
+                show_diff,
+                show_headers: false,
+                show_separator: false
+            };
 
             for (template, output_path) in mold.context().renders() {
                 render_template(
@@ -275,10 +288,7 @@ fn main() {
                     namespace.as_deref(),
                     template,
                     Some(output_path),
-                    show_diff,
-                    show_missing,
-                    false,
-                    true,
+                    &display_opts
                 );
             }
         }
