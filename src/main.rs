@@ -173,7 +173,7 @@ fn diff_template(
             let output_path = expand(output_path);
             display_diff(&template, &output_path, namespace, &rendered);
         }
-        Err(e) => eprintln!("failed to render file `{}` - {}", template.display(), e),
+        Err(e) => eprintln!("failed to render file `{}` - {:?}", template.display(), e),
     }
 }
 
@@ -195,25 +195,13 @@ fn render_template(
                 if show_diff {
                     display_diff(&template, &output_path, namespace, &rendered);
                 }
+                println!("saving {} to {}", template.display(), output_path.display());
                 if let Err(e) = std::fs::write(
-                    &output_path.join(
-                        template
-                            .file_name()
-                            .map(|f| f.to_string_lossy().to_string())
-                            .unwrap_or_else(|| {
-                                format!(
-                                    "mold-file-{}",
-                                    std::time::SystemTime::now()
-                                        .duration_since(std::time::UNIX_EPOCH)
-                                        .map(|d| d.as_secs())
-                                        .unwrap_or_default()
-                                )
-                            }),
-                    ),
+                    &output_path,
                     rendered.as_bytes(),
                 ) {
                     eprintln!(
-                        "failed to save rendered file `{}` to `{}` - {}",
+                        "failed to save rendered file `{}` to `{}` - {:?}",
                         template.display(),
                         output_path.display(),
                         e
@@ -225,7 +213,7 @@ fn render_template(
                 println!("{}", rendered);
             }
         }
-        Err(e) => eprintln!("failed to render file `{}` - {}", template.display(), e),
+        Err(e) => eprintln!("failed to render file `{}` - {:?}", template.display(), e),
     }
 }
 
@@ -243,7 +231,7 @@ fn main() {
         } => {
             let mold = match Mold::new(&context_file) {
                 Ok(mold) => mold,
-                Err(e) => exit!("failed to initialize mold - {}", e),
+                Err(e) => exit!("failed to initialize mold - {:?}", e),
             };
 
             templates.into_iter().for_each(|template| {
@@ -265,7 +253,7 @@ fn main() {
         } => {
             let mold = match Mold::new(&context_file) {
                 Ok(mold) => mold,
-                Err(e) => exit!("failed to initialize mold - {}", e),
+                Err(e) => exit!("failed to initialize mold - {:?}", e),
             };
 
             for (template, output_path) in mold.context().renders() {
@@ -288,7 +276,7 @@ fn main() {
         } => {
             let mold = match Mold::new(&context_file) {
                 Ok(mold) => mold,
-                Err(e) => exit!("failed to initialize mold - {}", e),
+                Err(e) => exit!("failed to initialize mold - {:?}", e),
             };
 
             diff_template(

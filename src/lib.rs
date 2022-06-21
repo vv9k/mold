@@ -96,7 +96,7 @@ pub struct Mold {
 
 impl Mold {
     pub fn new(context_file: &std::path::Path) -> Result<Self> {
-        let data = std::fs::read(context_file).context("context file read error")?;
+        let data = std::fs::read(context_file).context("failed to read context file")?;
         serde_yaml::from_slice::<SerializedContext>(&data)
             .map(|ctx| Mold {
                 context: ctx.into(),
@@ -145,6 +145,13 @@ impl Mold {
                     if !rendered && render_raw {
                         out.push_str(raw);
                     }
+                }
+                Token::FileSource { path, trim } => {
+                    let content = std::fs::read_to_string(path).context("failed to read source file")?;
+
+                    let content_processed = if trim { content.trim() } else { &content };
+
+                    out.push_str(content_processed);
                 }
             }
         }

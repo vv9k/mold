@@ -11,6 +11,8 @@ have multiple key-value entries. Those variables can then be used in the templat
 {% variable1 %}. The name of the variable is enclosed in `{%` and `%}` with any amount of
 whitespace in between allowed.
 
+There are also file source variables enclosed in `{@` and `@}` that point to a path in the file system. When rendering a context contents of this file will be used in place of the variable. To trim the content of the file of whitespace use `{@~` and `~@}` tags.
+
 ## Context
 
 Here is an example context file that could be used to render configuration:
