@@ -13,7 +13,7 @@ macro_rules! exit {
 }
 
 #[derive(Debug, Parser)]
-#[clap(version = "0.1.0", author = "Wojciech Kępka <wojciech@wkepka.dev>")]
+#[clap(version = "0.2.0", author = "Wojciech Kępka <wojciech@wkepka.dev>")]
 /// A simple configuration template rendering program.
 ///
 /// The main goal of mold is to allow users to easily switch configuration files between different
