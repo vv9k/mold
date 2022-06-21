@@ -196,10 +196,7 @@ fn render_template(
                     display_diff(&template, &output_path, namespace, &rendered);
                 }
                 println!("saving {} to {}", template.display(), output_path.display());
-                if let Err(e) = std::fs::write(
-                    &output_path,
-                    rendered.as_bytes(),
-                ) {
+                if let Err(e) = std::fs::write(&output_path, rendered.as_bytes()) {
                     eprintln!(
                         "failed to save rendered file `{}` to `{}` - {:?}",
                         template.display(),

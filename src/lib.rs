@@ -147,7 +147,8 @@ impl Mold {
                     }
                 }
                 Token::FileSource { path, trim } => {
-                    let content = std::fs::read_to_string(path).context("failed to read source file")?;
+                    let content =
+                        std::fs::read_to_string(path).context("failed to read source file")?;
 
                     let content_processed = if trim { content.trim() } else { &content };
 
