@@ -53,6 +53,12 @@ enum Subcommand {
         /// If true a diff of current file content and new rendered content will be displayed
         #[clap(long)]
         show_diff: bool,
+        /// If true a header before each file will be printed
+        #[clap(long)]
+        show_headers: bool,
+        /// If true no separator will be printed
+        #[clap(long)]
+        no_separator: bool,
     },
     /// Render specified context. If the context has no `renders` field this command has no effect.
     RenderContext {
@@ -184,6 +190,8 @@ fn render_template(
     output_path: Option<&Path>,
     show_diff: bool,
     show_missing: bool,
+    show_headers: bool,
+    show_separator: bool,
 ) {
     let template = expand(template);
     match mold.render_file(&template, namespace.as_deref(), show_missing) {
@@ -205,8 +213,12 @@ fn render_template(
                     );
                 }
             } else {
-                println!("{:=^1$}", "=", 80);
-                println!("File: {}\n{}", template.display(), line);
+                if show_separator {
+                    println!("{:=^1$}", "=", 80);
+                }
+                if show_headers {
+                    println!("File: {}\n{}", template.display(), line);
+                }
                 println!("{}", rendered);
             }
         }
@@ -225,6 +237,8 @@ fn main() {
             namespace,
             show_missing,
             show_diff,
+            show_headers,
+            no_separator,
         } => {
             let mold = match Mold::new(&context_file) {
                 Ok(mold) => mold,
@@ -239,6 +253,8 @@ fn main() {
                     output_path.as_deref(),
                     show_diff,
                     show_missing,
+                    show_headers,
+                    !no_separator,
                 );
             });
         }
@@ -261,6 +277,8 @@ fn main() {
                     Some(output_path),
                     show_diff,
                     show_missing,
+                    false,
+                    true,
                 );
             }
         }
